@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 
 circuit = QuantumCircuit(3,3)
 
+
 # 第一步
 circuit.x(2)
 circuit.h([0,1,2])
