@@ -59,7 +59,6 @@ def show_single_qubit_phases(qc):
             print(f"q{q}: φ ≈ {phi:.6f} rad  ({phi/np.pi:.4f} π)")
     return phases
 
-# 在你的电路构造完（包含 SWAP，但在测量之前更好）后调用：
 phases = show_single_qubit_phases(circuit)
 
 
