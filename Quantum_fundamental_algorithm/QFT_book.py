@@ -6,7 +6,7 @@ import math
 
 circuit = QuantumCircuit(4,4)
 
-# 第一步
+#第一步
 circuit.x([1,3])
 
 # 第二步~第五步， 定义函数qft_rotations
