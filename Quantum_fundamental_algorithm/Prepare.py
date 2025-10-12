@@ -5,7 +5,7 @@ from qiskit.circuit.library import StatePreparation
 from qiskit_aer import Aer
 import numpy as np
 import matplotlib.pyplot as plt
-##
+
 
 def prepare_quantum_state(*,
                           amplitudes = None,
