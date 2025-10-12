@@ -5,7 +5,6 @@ from qiskit.visualization import plot_histogram
 import matplotlib.pyplot as plt
 import numpy as np
 import math
-##
 # 计算arccos
 result1 = math.acos(0.999)
 result2 = math.acos(0.339)
