@@ -4,9 +4,8 @@ from qiskit_aer import Aer
 from qiskit.visualization import plot_histogram
 import matplotlib.pyplot as plt
 import math
-##
-circuit = QuantumCircuit(4,3)
 
+circuit = QuantumCircuit(4,3)
 # 第一步
 circuit.x(3)
 
@@ -52,6 +51,7 @@ probs = {k: v / shots for k, v in measurement_result.items()}
 fig_hist=plot_histogram(probs)
 plt.show()
 print("Counts:", measurement_result)
+
 
 
 
