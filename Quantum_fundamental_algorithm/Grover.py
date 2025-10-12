@@ -4,7 +4,6 @@ from qiskit.visualization import plot_histogram, plot_distribution
 import numpy as np
 import matplotlib.pyplot as plt
 
-##
 def _bitstr_to_little_endian_bits(bstr: str, n: int):
     """把高位在左的比特串（如 '101'）转成按 q0 最右的小端顺序列表。"""
     b = bstr.strip().replace(" ", "")
