@@ -4,7 +4,7 @@ from qiskit.visualization import plot_histogram
 from qiskit import transpile
 from math import pi
 import matplotlib.pyplot as plt
-
+##
 circuit = QuantumCircuit(5,5)
 
 # 第一步：制备量子态，制备振幅估计的叠加态

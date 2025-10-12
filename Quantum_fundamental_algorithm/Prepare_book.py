@@ -3,7 +3,7 @@ from qiskit import transpile
 from qiskit_aer import Aer
 from qiskit.visualization import plot_histogram
 import matplotlib.pyplot as plt
-
+##
 circuit = QuantumCircuit(2,2)
 
 #第一步

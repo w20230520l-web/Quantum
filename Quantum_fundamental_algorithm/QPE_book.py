@@ -4,7 +4,7 @@ from qiskit_aer import Aer
 from qiskit.visualization import plot_histogram
 import matplotlib.pyplot as plt
 import math
-
+##
 circuit = QuantumCircuit(4,3)
 
 # 第一步

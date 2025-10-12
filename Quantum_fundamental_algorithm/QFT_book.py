@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 from qiskit.quantum_info import DensityMatrix, partial_trace
 import numpy as np
 import math
-
+##
 circuit = QuantumCircuit(4,4)
 
 # 第一步
