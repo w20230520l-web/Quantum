@@ -36,7 +36,7 @@ transpiled_circuit = transpile(circuit,backend)
 job = backend.run(transpiled_circuit, shots=20000)
 result = job.result()
 
-#绘制结果图
+# 绘制结果图
 measurement_result = result.get_counts()
 shots = sum(measurement_result.values())
 probs = {k: v / shots for k, v in measurement_result.items()}

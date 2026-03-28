@@ -26,8 +26,8 @@ circuit.h(2)
 ## 第三步：特征值取反
 circuit.swap(1,2)
 # 受控旋转将特征值提取到辅助量子比特中
-circuit.cry(pi/16, 2,0)
-circuit.cry(pi/32, 1 ,0)
+circuit.cry(pi/4, 2,0)
+circuit.cry(pi/8, 1 ,0)
 circuit.swap(1, 2)
 
 # 第四步：逆相位估计
@@ -59,5 +59,6 @@ measurement_result = result.get_counts()
 shots = sum(measurement_result.values())
 probs = {k: v / shots for k, v in measurement_result.items()}
 fig_hist=plot_histogram(probs)
+plt.ylabel("Probability ")
 plt.show()
 print("Counts:", measurement_result)
