@@ -2,70 +2,52 @@ import pennylane as qml
 from pennylane import numpy as np
 import matplotlib.pyplot as plt
 from scipy.interpolate import make_interp_spline
-from matplotlib.ticker import  LogFormatterExponent, LogLocator, NullFormatter
+from matplotlib.ticker import LogFormatterExponent, LogLocator
 
 # ==========================================
-# 1. 经典有限元建模与求解
+# 1. 经典有限元建模
 # ==========================================
 def build_three_node_bar():
-    """
-    构建 3杆4节点 线性弹簧模型。
-    节点0固定，节点3受集中力。
-    """
     K = np.array((
-        ( 2.0, -1.0,  0.0,  0.0),
-        (-1.0,  2.0, -1.0,  0.0),
-        ( 0.0, -1.0,  1.0,  0.0),
-        ( 0.0,  0.0,  0.0,  1.0)
+        (2.0, -1.0, 0.0, 0.0),
+        (-1.0, 2.0, -1.0, 0.0),
+        (0.0, -1.0, 1.0, 0.0),
+        (0.0, 0.0, 0.0, 1.0)
     ))
     f = np.array((0.0, 0.0, 1.0, 0.0))
     return K, f
 
-# 获取经典解
 K_matrix, f_vector = build_three_node_bar()
 classical_u = np.linalg.solve(K_matrix, f_vector)
 classical_normalized = classical_u / np.linalg.norm(classical_u)
+
 print("--- 经典有限元求解结果 ---")
 print(f"经典位移解: {classical_u}")
 print(f"归一化位移解 : {classical_normalized}\n")
 
-
 # ==========================================
 # 2. 自动化泡利分解
 # ==========================================
-print("正在自动分解刚度矩阵...")
-# 使用 PennyLane 内置的分解器将矩阵转化为 Pauli 算符的组合
+print("正在分解刚度矩阵...")
 H = qml.pauli_decompose(K_matrix)
-
-# 提取系数和观测算符
 coeffs, obs = H.terms()
 c = np.array(coeffs)
 
-# 提取泡利字符串
 wire_map = dict()
-wire_map[0] = 0
+wire_map = 0
 wire_map[1] = 1
 pauli_strings = list()
 for op in obs:
     pauli_strings.append(qml.pauli.pauli_word_to_string(op, wire_map=wire_map))
 
-print("--- 刚度矩阵的泡利分解结果 ---")
-for i in range(len(c)):
-    print(f"项 {i}: 系数 = {c[i]:.2f}, 泡利操作 = {pauli_strings[i]}")
-
 # ==========================================
-# 3. 动态构建受控量子门操作
+# 3. 动态构建量子门操作
 # ==========================================
 n_qubits = 2
 ancilla_idx = 2
 dev = qml.device("default.qubit", wires=n_qubits + 1)
 
-
 def apply_pauli_string(p_str, control_wire=None):
-    """
-    通用解析器：读取 'IX', 'ZZ' 等字符串，自动在电路上施加对应的受控/非受控量子门。
-    这彻底取代了之前繁琐的 if/elif 穷举。
-    """
     for wire, char in enumerate(p_str):
         if char == 'I':
             continue
@@ -86,22 +68,15 @@ def apply_pauli_string(p_str, control_wire=None):
                 qml.PauliZ(wires=wire)
 
 def CA(idx):
-    """施加受控的 A_l 操作"""
     apply_pauli_string(pauli_strings[idx], control_wire=ancilla_idx)
 
 def apply_A(idx):
-    """施加无控制的 A_l 操作"""
     apply_pauli_string(pauli_strings[idx], control_wire=None)
 
-# ==========================================
-# 4. 量子态制备与拟设 (与之前相同)
-# ==========================================
 def U_b():
-    """制备载荷向量 |b> = (0, 0, 1, 0)^T，对应量子态 |10>"""
     qml.PauliX(wires=0)
 
 def variational_block(weights):
-    """硬件高效拟设"""
     n_layers = len(weights) - 1
     for layer in range(n_layers):
         for i in range(n_qubits):
@@ -110,9 +85,8 @@ def variational_block(weights):
     for i in range(n_qubits):
         qml.RY(weights[-1, i], wires=i)
 
-
 # ==========================================
-# 5. 哈达玛测试与代价函数
+# 4. 哈达玛测试簇
 # ==========================================
 @qml.qnode(dev, diff_method="parameter-shift")
 def hadamard_test_beta(weights, l, lp):
@@ -123,22 +97,53 @@ def hadamard_test_beta(weights, l, lp):
     qml.Hadamard(wires=ancilla_idx)
     return qml.expval(qml.PauliZ(ancilla_idx))
 
-
 @qml.qnode(dev, diff_method="parameter-shift")
 def hadamard_test_mu(weights, l):
     qml.Hadamard(wires=ancilla_idx)
-
     def W():
         variational_block(weights)
         apply_A(l)
         qml.adjoint(U_b)()
-
     qml.ctrl(W, control=ancilla_idx)()
     qml.Hadamard(wires=ancilla_idx)
     return qml.expval(qml.PauliZ(ancilla_idx))
 
+@qml.qnode(dev, diff_method="parameter-shift")
+def hadamard_test_local_z(weights, l, lp, j):
+    qml.Hadamard(wires=ancilla_idx)
+    variational_block(weights)
+    CA(l)
+    qml.adjoint(U_b)()
+    qml.CZ(wires=(ancilla_idx, j))
+    U_b()
+    CA(lp)
+    qml.Hadamard(wires=ancilla_idx)
+    return qml.expval(qml.PauliZ(ancilla_idx))
 
-def compute_cost(weights):
+# ==========================================
+# 5. 定义双代价函数
+# ==========================================
+def cost_local(weights):
+    global_norm = 0.0
+    beta_vals = dict()
+    for l in range(len(c)):
+        for lp in range(len(c)):
+            val = hadamard_test_beta(weights, l, lp)
+            beta_vals[(l, lp)] = val
+            global_norm += c[l] * c[lp] * val
+
+    local_overlap = 0.0
+    for l in range(len(c)):
+        for lp in range(len(c)):
+            z_sum = 0.0
+            for j in range(n_qubits):
+                z_sum += hadamard_test_local_z(weights, l, lp, j)
+            term_overlap = 0.5 * (n_qubits * beta_vals[(l, lp)] + z_sum)
+            local_overlap += c[l] * c[lp] * term_overlap
+
+    return 1.0 - (local_overlap / (n_qubits * global_norm))
+
+def cost_global(weights):
     global_norm = 0.0
     for l in range(len(c)):
         for lp in range(len(c)):
@@ -151,7 +156,6 @@ def compute_cost(weights):
     global_overlap = mu_sum ** 2
     return 1.0 - (global_overlap / global_norm)
 
-
 # ==========================================
 # 6. 经典优化训练循环
 # ==========================================
@@ -159,17 +163,20 @@ np.random.seed(42)
 n_layers = 3
 w = 0.01 * np.random.randn(n_layers + 1, n_qubits, requires_grad=True)
 
-opt = qml.AdamOptimizer(stepsize=0.10)
+opt = qml.GradientDescentOptimizer(stepsize=0.05)
 steps = 100
-cost_history = list()
+
+history_L = list()
+history_G = list()
 
 print("\n开始 VQLS 量子有限元训练...")
 for it in range(steps):
-    w, cost = opt.step_and_cost(compute_cost, w)
-    cost_history.append(cost)
+    w, c_L = opt.step_and_cost(cost_local, w)
+    c_G = cost_global(w)
+    history_L.append(c_L)
+    history_G.append(c_G)
     if it % 10 == 0 or it == steps - 1:
-        print(f"迭代步数 {it:3d} | Cost Function= {cost:.6f}")
-
+        print(f"Step {it:3d} | Local Cost = {c_L:.5f} | Global Cost = {c_G:.5f}")
 
 # ==========================================
 # 7. 结果对比与提取
@@ -186,55 +193,54 @@ print("\n--- 最终结果对比 ---")
 print(f"经典有限元精确解: {classical_normalized}")
 print(f"量子变分拟设生成解: {quantum_solution}")
 
+# ==========================================
+# 8. 双轨对比平滑绘图 (完全套用你提供的高级美化模板)
+# ==========================================
+x_data = np.arange(len(history_L))
+y_data_L = np.array(history_L)
+y_data_G = np.array(history_G)
 
-# --- 数据 ---
-x_data = np.arange(len(cost_history))
-y_data = np.array(cost_history)
+# 确保数据在 log 范围内
+y_data_L = np.clip(y_data_L, 1e-6, 1.0)
+y_data_G = np.clip(y_data_G, 1e-6, 1.0)
 
-# 为了绘图美观，确保数据在 log 范围内 (防止出现 0 或负数)
-y_data = np.clip(y_data, 1e-6, 1.0)
-
-# --- 2. 使用 B-Spline 进行平滑拟合 ---
-spline = make_interp_spline(x_data, y_data, k=3)
+# 使用 B-Spline 进行平滑拟合
 x_smooth = np.linspace(x_data.min(), x_data.max(), 300)
-y_smooth = spline(x_smooth)
-# 拟合曲线也需要限制在显示范围内，避免 log 报错
-y_smooth = np.clip(y_smooth, 1e-6, 1.2)
 
-# --- 3. 绘图配置 ---
-plt.style.use('seaborn-v0_8-whitegrid') # 使用干净的白色网格风格
+spline_L = make_interp_spline(x_data, y_data_L, k=3)
+y_smooth_L = spline_L(x_smooth)
+y_smooth_L = np.clip(y_smooth_L, 1e-6, 1.2)
+
+spline_G = make_interp_spline(x_data, y_data_G, k=3)
+y_smooth_G = spline_G(x_smooth)
+y_smooth_G = np.clip(y_smooth_G, 1e-6, 1.2)
+
+# 绘图配置
+plt.style.use('seaborn-v0_8-whitegrid')
 fig, ax = plt.subplots(figsize=(10, 6))
 
 # 绘制平滑后的拟合曲线
-ax.plot(x_smooth, y_smooth, color="#1f77b4", linewidth=2.5, label="Fitted Convergence Curve", zorder=3)
+ax.plot(x_smooth, y_smooth_L, color="#1f77b4", linewidth=2.5, label="Local Cost $C_L$ (Optimizer Driven)", zorder=3)
+ax.plot(x_smooth, y_smooth_G, color="#d62728", linewidth=2.5, linestyle="--", label="Global Cost $C_G$ (Passive Tracker)", zorder=3)
 
-# --- 4. 纵轴核心设置：对数尺度 + 指数格式 ---
+# 纵轴核心设置：对数尺度 + 指数格式
 ax.set_yscale("log")
-
-# 设置纵轴显示范围：从 10^-5 到 1
 ax.set_ylim(1e-5, 1.0)
-
-# 设置主要刻度：每隔一个量级(10^n)放置一个刻度
 ax.yaxis.set_major_locator(LogLocator(base=10.0, numticks=6))
-
-# 设置格式化：显示为标准的指数形式 (如 10^0, 10^-1...)
-# LogFormatterSciNotation 会自动处理成科学计数法格式
 ax.yaxis.set_major_formatter(LogFormatterExponent(base=10.0))
 
-# --- 5. 细节美化 ---
+# 细节美化
 ax.set_xlabel("Optimization Steps", fontsize=12, fontweight='bold')
 ax.set_ylabel("Cost Function (Log Scale)", fontsize=12, fontweight='bold')
-ax.set_title("VQLs 1D Bar ", fontsize=15, pad=20, fontweight='bold')
+ax.set_title("VQLS 1D Bar: Local vs Global Cost", fontsize=15, pad=20, fontweight='bold')
 
-# 网格线优化：主刻度线深一些，次刻度线浅一些
 ax.grid(True, which="major", linestyle="-", color='gray', alpha=0.3)
 ax.grid(True, which="minor", linestyle="--", color='gray', alpha=0.1)
 
-# 移除上方和右侧的边框，更符合学术审美
 ax.spines['top'].set_visible(False)
 ax.spines['right'].set_visible(False)
 
-ax.legend(loc='upper right', frameon=True, shadow=True)
+ax.legend(loc='upper right', frameon=True, shadow=True, fontsize=11)
 
 plt.tight_layout()
 plt.show()
